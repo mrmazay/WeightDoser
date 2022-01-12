@@ -8,14 +8,22 @@ import time
 
 
 class Doser(QObject):
-    enable = 0
-    speed = 0
-    reverce = 0
-    stepCount = 0
+   # enable = 0
+   # speed = 0
+   # reverce = 0
+   # stepCount = 0
+    dSer = serial
+    packet = bytearray()
 
     @pyqtSlot()
     def __init__(self):
         super(Doser, self).__init__()
+        self.working = True
+
+    def dose(self, stepCount):
+        self.packet.clear()
+        self.packet.append(stepCount)
+        self.dSer.write(self.packet)
 
 
 class Balance(QObject):
@@ -25,16 +33,17 @@ class Balance(QObject):
     isStable = False
     isZero = False
     isNegative = False
-    Connected = False
+    connected = False
 
     @pyqtSlot()
     def __init__(self):
         super(Balance, self).__init__()
+        self.working = True
 
     def getCurWeight(self):
         self.isNegative = False
         self.isStable = False
-        self.isZero = False         #  ????????????????????????????????????????
+        self.isZero = False         # ????????????????????????????????????????
         self.bSer.write("SUI\r\n".encode())
         resp = self.bSer.readline().decode()
         print(resp)
@@ -65,6 +74,7 @@ class Balance(QObject):
             print(resp)
             if resp[0] == "Z" and resp[2] == 'D':
                 self.isZero = True
+                self.getCurWeight()
                 return 1
             else:
                 return -1
@@ -72,6 +82,8 @@ class Balance(QObject):
     def updateLoop(self):
         while self.working:
             self.getCurWeight()
+            time.sleep(1)
+        self.working = True
 
 
 class MainApp(QtWidgets.QMainWindow, design.Ui_MainWindow):
@@ -82,12 +94,18 @@ class MainApp(QtWidgets.QMainWindow, design.Ui_MainWindow):
         # и т.д. в файле design.py
         super().__init__()
         self.setupUi(self)  # Это нужно для инициализации нашего дизайна
+# Перенести на кнопку подключения!!!!!!!!!!!!
         self.Balance = Balance()
+        self.Doser = Doser()
+        self.dosThread = QThread()
         self.thread = QThread()  # a new thread to run our background tasks in
         self.Balance.moveToThread(self.thread)
+        self.Doser.moveToThread(self.dosThread)
+        self.textEdit.append("Opening balance port")
+        self.Balance.bSer = serial.Serial('/dev/ttyUSB0', 19200, timeout=3)
+        self.Doser.dSer = serial.Serial('/dev/ttyUSB1', 19200, timeout=3)
         self.Balance.weightReady.connect(self.updGUI)
-        # self.Balance.bSer = serial.Serial(self.lineEdit_4.text(), 9600, timeout=3)
-        self.pushButton.clicked.connect(self.start_loop)
+        self.pushButton.clicked.connect(self.Balance.updateLoop)
         self.pushButton_2.clicked.connect(self.stop_loop)
        # self.Balance.finished.connect(self.loop_finished)  # do something in the gui when the worker loop ends
        # self.Balance.finished.connect(self.thread.quit)  # tell the thread it's time to stop running
@@ -97,37 +115,32 @@ class MainApp(QtWidgets.QMainWindow, design.Ui_MainWindow):
         self.thread.start()
 
     def updGUI(self):
+        self.label.setText("Working")
         self.label_11.setText(str(self.Balance.curWeight))
-
-    def start_loop(self):
-        self.textEdit.append("Opening port")
-        self.Balance.bSer = serial.Serial(self.lineEdit_4.text(), 9600, timeout=3)
-        # self.ser = serial.Serial(self.lineEdit_4.text(), 9600, timeout=3)
+        fill = self.Balance.curWeight*100/float(self.lineEdit.text())
+        self.textEdit.append(str(fill))
+        self.Doser.dose(95-int(fill))
 
     def stop_loop(self):
-        self.textEdit.append("Closing port...")
-        self.Balance.bSer.close()
-        # self.ser.close()
-
-    def onIntReady(self, i):
-        self.textEdit.append("{}".format(i))
-        arr = i.split()
-        self.label_11.setText(arr[1]+' '+arr[2])
+        self.Balance.working = False
+        self.label.setText("IDLE")
 
     def on_pushButton_6_clicked(self):
-        self.Balance.setZero()
+        if self.Balance.working is False:
+            self.label_11.setText("---.---")
+            self.label.setText("Zeroing")
+            self.Balance.setZero()
+        else: self.textEdit.append("Stop dosing first!!")
 
     def on_pushButton_5_clicked(self):
-        self.Balance.getCurWeight()
-        self.label_11.setText(str(self.Balance.curWeight))
-
-    def on_pushButton_7_clicked(self):
-        self.Balance.working = True
-        self.Balance.updateLoop()
-
+        if self.Balance.working is False:
+            self.Balance.getCurWeight()
+        else: self.textEdit.append("Stop dosing first!!")
 
     def on_pushButton_8_clicked(self):
-        self.Balance.working = False
+        fill = self.Balance.curWeight*100/float(self.lineEdit.text())
+        self.textEdit.append(str(fill))
+        self.Doser.dose(200*(100-int(fill))/100)
 
 
 def main():
