@@ -6,7 +6,7 @@ import serial, serial.tools.list_ports
 import time
 
 
-class Balance(QObject):
+class scales(QObject):
 
         weightReady = pyqtSignal()
         ser = serial
@@ -18,30 +18,30 @@ class Balance(QObject):
 
         @pyqtSlot()
         def __init__(self):
-            super(Balance, self).__init__()
+            super(scales, self).__init__()
             self.working = False
 
         def connect(self,port):
-            packet = bytearray()
-            packet.clear()
-            packet.append(90)
-            packet.append(13)
-            packet.append(10)
-            try:
-                self.ser = serial.Serial(port, 19200, timeout=3)
-                self.ser.write("Z\r\n".encode())
-                time.sleep(1)
-                resp = self.ser.read(1)
-                if resp == b'Z':
-                    self.connected = True
-                    return 1
-                else:
-                    self.connected = False
-                    self.ser.close
-                    return 0
-            except (OSError, serial.SerialException):
-                    pass
-
+            if self.connected == False:
+                packet = bytearray()
+                packet.clear()
+                packet.append(90)
+                packet.append(13)
+                packet.append(10)
+                try:
+                    self.ser = serial.Serial(port, 19200, timeout=3)
+                    self.ser.write("Z\r\n".encode())
+                    time.sleep(1)
+                    resp = self.ser.read(1)
+                    if resp == b'Z':
+                        self.connected = True
+                        return 1
+                    else:
+                        self.connected = False
+                        self.ser.close
+                        return -1
+                except (OSError, serial.SerialException):
+                        pass
 
 
         def update(self):
@@ -73,6 +73,7 @@ class Balance(QObject):
 
 
         def tare(self):
+            if self.connected:
                 self.working = False
                 self.ser.write("T\r\n".encode('utf-8'))
                 resp = self.ser.readline().decode()
@@ -87,6 +88,7 @@ class Balance(QObject):
                         return -1
 
         def setZero(self):
+            if self.connected:
                 self.working = False
                 self.ser.write("Z\r\n".encode('utf-8'))
                 resp = self.ser.readline().decode()
